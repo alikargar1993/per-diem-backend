@@ -7,7 +7,7 @@ Thin Node backend for the [Per Diem full-stack take-home](perdiem-fullstack-codi
 - **Fastify** — HTTP server
 - **TypeScript** (strict, ESM)
 - **tsx** — dev runner with watch
-- **Square Node SDK** — sandbox Catalog & Locations (routes coming next)
+- **Square Node SDK** — sandbox Catalog & Locations
 - **Zod** — env and request validation
 
 ## Prerequisites
@@ -49,7 +49,11 @@ Thin Node backend for the [Per Diem full-stack take-home](perdiem-fullstack-codi
 
    ```bash
    curl http://localhost:3001/health
+   curl http://localhost:3001/api/locations
+   curl "http://localhost:3001/api/menu?locationId=YOUR_LOCATION_ID"
    ```
+
+   Replace `YOUR_LOCATION_ID` with an id from the locations response.
 
 ## Scripts
 
@@ -60,36 +64,51 @@ Thin Node backend for the [Per Diem full-stack take-home](perdiem-fullstack-codi
 | `yarn start`     | Run compiled output                 |
 | `yarn typecheck` | Typecheck without emit              |
 
-## Architecture (boilerplate)
+## API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Liveness check |
+| `GET` | `/api/locations` | All Square locations |
+| `GET` | `/api/catalog` | Categories + items (all locations) |
+| `GET` | `/api/menu?locationId=` | Menu grouped by category for one location |
+| `GET` | `/api/items/:itemId?locationId=` | Item detail (validates location availability) |
+| `POST` | `/api/catalog/refresh` | Clears catalog cache and returns fresh catalog |
+
+Prices are returned in the smallest currency unit (cents) with a `currency` code, matching Square’s `Money` type.
+
+## Architecture
 
 ```
 src/
-  config/env.ts       # Validated env (fail fast on boot)
+  config/env.ts
+  types/api.ts              # Client-facing DTOs
   lib/
-    errors.ts         # AppError + HTTP mapping
+    catalog/
+      fetch-catalog.ts      # Paginated Square list + 5m cache
+      location-presence.ts  # present_at_* / absent_at_* rules
+      map-catalog.ts        # Square → API shapes
+    errors.ts
     square/
-      client.ts       # Singleton Square SDK client
-      map-square-error.ts
-  plugins/
-    error-handler.ts  # Consistent JSON errors
-  routes/
-    health.ts         # Liveness + env hint (no secrets)
-  app.ts              # Fastify wiring
-  index.ts            # Entry
+  services/                 # Business logic
+  routes/api/               # HTTP handlers
+  plugins/error-handler.ts
+  app.ts
+  index.ts
 ```
 
 **Decisions**
 
 - **Backend proxy only** — Square token stays server-side; CORS is restricted to configured origins.
-- **No database** — in-memory or cache later if needed for catalog (per challenge FAQ).
-- **Square errors normalized** — routes will call `mapSquareError` so clients get stable `{ error: { code, message } }` shapes.
+- **Catalog cache** — In-memory 5-minute TTL to avoid duplicate paginated `list` calls per session.
+- **Location filter** — Uses Square’s `presentAtAllLocations` / `presentAtLocationIds` / `absentAtLocationIds` on both items and categories.
+- **Menu grouping** — Items can appear under multiple categories when Square assigns multiple category ids.
 
 ## What’s next
 
-- `GET /api/locations` — Square Locations API
-- `GET /api/catalog` — categories + items (with pagination)
-- `GET /api/menu?locationId=` — filter by `present_at_*` / `absent_at_*` fields
-- Optional: time-of-day availability, modifiers, search, cart subtotal, inventory
+- Time-of-day & day-of-week availability (category availability periods)
+- Modifiers on item detail
+- Search, cart subtotal, inventory
 
 ## Submission notes
 

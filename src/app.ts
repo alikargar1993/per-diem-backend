@@ -2,6 +2,7 @@ import cors from "@fastify/cors";
 import Fastify from "fastify";
 import { env } from "./config/env.js";
 import { registerErrorHandler } from "./plugins/error-handler.js";
+import { apiRoutes } from "./routes/api/index.js";
 import { healthRoutes } from "./routes/health.js";
 
 export async function buildApp() {
@@ -19,6 +20,7 @@ export async function buildApp() {
 
   await registerErrorHandler(app);
   await app.register(healthRoutes);
+  await app.register(apiRoutes, { prefix: "/api" });
 
   return app;
 }
