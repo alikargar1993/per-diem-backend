@@ -1,53 +1,32 @@
-import { fetchCatalogSnapshot } from "../lib/catalog/fetch-catalog.js";
 import {
-  buildAvailabilityContextForMenu,
-  isItemAvailableNow,
-} from "../lib/catalog/availability.js";
-import {
-  buildImageUrlMap,
   groupMenuByCategory,
-  mapCategories,
   mapItem,
-  mapItems,
 } from "../lib/catalog/map-catalog.js";
 import { isPresentAtLocation } from "../lib/catalog/location-presence.js";
+import { isItemAvailableNow } from "../lib/catalog/availability.js";
+import { fetchCatalogSnapshot } from "../lib/catalog/fetch-catalog.js";
+import { buildImageUrlMap } from "../lib/catalog/map-catalog.js";
 import { notFound } from "../lib/errors.js";
 import type { Square } from "square";
 import type { MenuItemDto, MenuResponseDto } from "../types/api.js";
-import { listLocations } from "./locations.service.js";
+import {
+  loadVisibleMenu,
+  toMenuAvailabilityDto,
+  type MenuQuery,
+} from "./menu-context.service.js";
 
-export type MenuQuery = {
-  locationId: string;
-  /** Client device time as ISO 8601. When omitted, server machine local time is used. */
-  at?: Date;
-};
+export type { MenuQuery } from "./menu-context.service.js";
 
 export async function getMenuForLocation(
   query: MenuQuery,
 ): Promise<MenuResponseDto> {
-  const { locationId, at } = query;
-  const locations = await listLocations();
-  const location = locations.find((loc) => loc.id === locationId);
-
-  if (!location) {
-    throw notFound(`Location not found: ${locationId}`);
-  }
-
-  const availability = buildAvailabilityContextForMenu(at, location.timezone);
-  const { objects } = await fetchCatalogSnapshot();
-  const imageUrlMap = buildImageUrlMap(objects);
-
-  const categories = mapCategories(objects, locationId);
-  const items = mapItems(objects, imageUrlMap, { locationId, availability });
+  const { locationId, availability, categories, items } =
+    await loadVisibleMenu(query);
   const grouped = groupMenuByCategory(categories, items);
 
   return {
     locationId,
-    availability: {
-      referenceTime: availability.referenceTime.toISOString(),
-      timezone: availability.timezone,
-      activePeriods: availability.activePeriods,
-    },
+    availability: toMenuAvailabilityDto(availability),
     categories: grouped.categories,
     uncategorized: grouped.uncategorized,
   };
@@ -57,15 +36,9 @@ export async function getItemDetail(
   itemId: string,
   query: MenuQuery,
 ): Promise<MenuItemDto> {
-  const { locationId, at } = query;
-  const locations = await listLocations();
-  const location = locations.find((loc) => loc.id === locationId);
+  const { locationId } = query;
+  const { availability } = await loadVisibleMenu(query);
 
-  if (!location) {
-    throw notFound(`Location not found: ${locationId}`);
-  }
-
-  const availability = buildAvailabilityContextForMenu(at, location.timezone);
   const { objects } = await fetchCatalogSnapshot();
   const imageUrlMap = buildImageUrlMap(objects);
 

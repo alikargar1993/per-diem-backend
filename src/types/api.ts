@@ -63,3 +63,11 @@ export type CatalogResponseDto = {
   categories: CategoryDto[];
   items: MenuItemDto[];
 };
+
+export type SearchResponseDto = {
+  query: string;
+  locationId: string;
+  availability: MenuAvailabilityDto;
+  items: MenuItemDto[];
+  total: number;
+};

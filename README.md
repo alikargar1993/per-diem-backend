@@ -52,6 +52,7 @@ Thin Node backend for the [Per Diem full-stack take-home](perdiem-fullstack-codi
    curl http://localhost:3001/api/locations
    curl "http://localhost:3001/api/menu?locationId=YOUR_LOCATION_ID"
    curl "http://localhost:3001/api/menu?locationId=YOUR_LOCATION_ID&at=2026-05-30T08:30:00.000Z"
+   curl "http://localhost:3001/api/search?locationId=YOUR_LOCATION_ID&q=coffee"
    ```
 
    Replace `YOUR_LOCATION_ID` with an id from the locations response. Pass `at` (ISO 8601) to simulate the client device clock for meal-period filtering.
@@ -74,6 +75,7 @@ Thin Node backend for the [Per Diem full-stack take-home](perdiem-fullstack-codi
 | `GET` | `/api/catalog` | Categories + items (all locations) |
 | `GET` | `/api/menu?locationId=&at=` | Menu for one location; optional `at` (ISO 8601 client time) |
 | `GET` | `/api/items/:itemId?locationId=&at=` | Item detail; location + meal-period checks |
+| `GET` | `/api/search?locationId=&q=&at=` | Search visible menu (name, description, variations, categories) |
 | `POST` | `/api/catalog/refresh` | Clears catalog cache and returns fresh catalog |
 
 Prices are returned in the smallest currency unit (cents) with a `currency` code, matching Square’s `Money` type.
@@ -110,6 +112,7 @@ src/
 
 - Day-of-week rules (if added in Square outside this custom attribute)
 - Modifiers on item detail
+- Cart subtotal, inventory
 - Search, cart subtotal, inventory
 
 ## Submission notes
