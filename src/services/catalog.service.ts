@@ -1,17 +1,8 @@
-import { fetchCatalogSnapshot } from "../lib/catalog/fetch-catalog.js";
-import {
-  buildImageUrlMap,
-  mapCategories,
-  mapItems,
-} from "../lib/catalog/map-catalog.js";
 import type { CatalogResponseDto } from "../types/api.js";
+import { loadCatalogView } from "./catalog-context.service.js";
 
 export async function getCatalog(): Promise<CatalogResponseDto> {
-  const { objects } = await fetchCatalogSnapshot();
-  const imageUrlMap = buildImageUrlMap(objects);
+  const { categories, items } = await loadCatalogView();
 
-  return {
-    categories: mapCategories(objects),
-    items: mapItems(objects, imageUrlMap, {}),
-  };
+  return { categories, items };
 }

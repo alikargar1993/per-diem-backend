@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import type { FastifyRequest } from "fastify";
-import { authEnv } from "../../config/auth.js";
+import { authEnv, isRefreshTokenEnabled } from "../../config/auth.js";
 import { unauthorized } from "../errors.js";
 
 export type AuthPolicy = "public" | "general" | "refresh";
@@ -37,9 +37,9 @@ function safeEqualToken(provided: string, expected: string): boolean {
 }
 
 /**
- * GET/HEAD → API_GENERAL_TOKEN.
- * POST, PUT, PATCH, DELETE, … → API_REFRESH_TOKEN.
- * Route config `auth: "public"` skips checks (e.g. /health).
+ * GET/HEAD → general token.
+ * POST, PUT, PATCH, DELETE, … → refresh token when API_REFRESH_TOKEN is set;
+ * otherwise falls back to general token so the server can start without refresh config.
  */
 export function resolveAuthPolicyForRequest(request: FastifyRequest): AuthPolicy {
   const routePolicy = request.routeOptions.config?.auth;
@@ -47,10 +47,11 @@ export function resolveAuthPolicyForRequest(request: FastifyRequest): AuthPolicy
 
   const method = request.method.toUpperCase();
 
-  // CORS preflight — no token required.
   if (method === "OPTIONS") return "public";
 
-  if (READ_METHODS.has(method)) return "general";
+  if (READ_METHODS.has(method) || !isRefreshTokenEnabled()) {
+    return "general";
+  }
 
   return "refresh";
 }
@@ -61,10 +62,13 @@ export function assertAuthPolicy(
 ): void {
   if (policy === "public") return;
 
+  const effectivePolicy =
+    policy === "refresh" && !isRefreshTokenEnabled() ? "general" : policy;
+
   const token = extractApiToken(request);
   if (!token) {
     const hint =
-      policy === "refresh"
+      effectivePolicy === "refresh"
         ? "API_REFRESH_TOKEN"
         : "API_GENERAL_TOKEN";
     throw unauthorized(
@@ -73,11 +77,13 @@ export function assertAuthPolicy(
   }
 
   const expected =
-    policy === "refresh" ? authEnv.API_REFRESH_TOKEN : authEnv.API_GENERAL_TOKEN;
+    effectivePolicy === "refresh" && authEnv.API_REFRESH_TOKEN
+      ? authEnv.API_REFRESH_TOKEN
+      : authEnv.API_GENERAL_TOKEN;
 
   if (!safeEqualToken(token, expected)) {
     const hint =
-      policy === "refresh" ? "API_REFRESH_TOKEN" : "API_GENERAL_TOKEN";
+      effectivePolicy === "refresh" ? "API_REFRESH_TOKEN" : "API_GENERAL_TOKEN";
     throw unauthorized(`Invalid API token (expected ${hint})`);
   }
 }

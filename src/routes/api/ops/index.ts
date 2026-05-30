@@ -1,6 +1,6 @@
 /**
- * Reserved for future ops-only routes that should not follow method-based auth.
- * Mutating routes on v1 already require API_REFRESH_TOKEN via the auth plugin.
+ * Reserved for future ops-only routes.
+ * Until API_REFRESH_TOKEN is set, mutating /api routes use API_GENERAL_TOKEN.
  */
 export async function opsRoutes(): Promise<void> {
   return;

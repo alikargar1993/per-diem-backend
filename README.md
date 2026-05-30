@@ -34,8 +34,8 @@ Thin Node backend for the [Per Diem full-stack take-home](perdiem-fullstack-codi
    | --------------------- | -------------------------------------------------------- |
    | `SQUARE_ACCESS_TOKEN` | Sandbox access token from the Square Developer Dashboard |
    | `SQUARE_ENVIRONMENT`  | `sandbox` (required for this challenge)                  |
-   | `API_GENERAL_TOKEN`   | Required for **GET/HEAD** `/api/*` (min 16 chars)        |
-   | `API_REFRESH_TOKEN`   | Required for **POST/PUT/PATCH/DELETE** `/api/*`          |
+   | `API_GENERAL_TOKEN`   | Required on all `/api` routes (min 16 chars)               |
+   | `API_REFRESH_TOKEN`   | Optional; when set, mutating methods require it instead  |
    | `PORT`                | API port (default `3001`)                                |
    | `CORS_ORIGINS`        | Comma-separated client origins allowed to call the API   |
 
@@ -57,9 +57,13 @@ Thin Node backend for the [Per Diem full-stack take-home](perdiem-fullstack-codi
    curl -H "Authorization: Bearer $API_TOKEN" \
      "http://localhost:3001/api/menu?locationId=YOUR_LOCATION_ID"
    curl -H "Authorization: Bearer $API_TOKEN" \
+     "http://localhost:3001/api/categories"
+   curl -H "Authorization: Bearer $API_TOKEN" \
+     "http://localhost:3001/api/search?q=coffee"
+   curl -H "Authorization: Bearer $API_TOKEN" \
      "http://localhost:3001/api/search?locationId=YOUR_LOCATION_ID&q=coffee"
 
-   curl -X POST -H "Authorization: Bearer $API_REFRESH_TOKEN" \
+   curl -X POST -H "Authorization: Bearer $API_TOKEN" \
      http://localhost:3001/api/catalog/refresh
    ```
 
@@ -80,11 +84,12 @@ Thin Node backend for the [Per Diem full-stack take-home](perdiem-fullstack-codi
 |--------|------|-------------|
 | `GET` | `/health` | Liveness check |
 | `GET` | `/api/locations` | All Square locations |
+| `GET` | `/api/categories` | All catalog categories (no `locationId`) |
 | `GET` | `/api/catalog` | Categories + items (all locations) |
 | `GET` | `/api/menu?locationId=&at=` | Menu for one location; optional `at` (ISO 8601 client time) |
 | `GET` | `/api/items/:itemId?locationId=&at=` | Item detail; location + meal-period checks |
-| `GET` | `/api/search?locationId=&q=&at=` | Search visible menu (name, description, variations, categories) |
-| `POST` | `/api/catalog/refresh` | Clears catalog cache (**refresh token**) |
+| `GET` | `/api/search?q=&at=` | Search items; optional `locationId` to scope by location |
+| `POST` | `/api/catalog/refresh` | Clears catalog cache (general token until refresh is configured) |
 
 Prices are returned in the smallest currency unit (cents) with a `currency` code, matching Square’s `Money` type.
 
@@ -97,8 +102,9 @@ Tokens are sent in headers only (never query strings):
 
 | HTTP method | Env variable | Used for |
 |-------------|--------------|----------|
-| `GET`, `HEAD` | `API_GENERAL_TOKEN` | Read data (locations, menu, search, catalog) |
-| `POST`, `PUT`, `PATCH`, `DELETE`, … | `API_REFRESH_TOKEN` | Mutations (e.g. `POST /api/catalog/refresh`) |
+| `GET`, `HEAD` | `API_GENERAL_TOKEN` | Always |
+| `POST`, `PUT`, `PATCH`, `DELETE`, … | `API_GENERAL_TOKEN` | Default (when `API_REFRESH_TOKEN` is unset) |
+| `POST`, `PUT`, `PATCH`, `DELETE`, … | `API_REFRESH_TOKEN` | When set in `.env` |
 | — | *(none)* | `GET /health` only |
 
 Wrong or missing token → **401** with `code: "UNAUTHORIZED"`.
@@ -107,16 +113,14 @@ Wrong or missing token → **401** with `code: "UNAUTHORIZED"`.
 
 ```ts
 const API_BASE = "http://localhost:3001";
-const GENERAL = import.meta.env.VITE_API_GENERAL_TOKEN;
-const REFRESH = import.meta.env.VITE_API_REFRESH_TOKEN;
+const API_TOKEN = import.meta.env.VITE_API_GENERAL_TOKEN;
 
-function authHeaders(method: string): HeadersInit {
-  const token = method === "GET" || method === "HEAD" ? GENERAL : REFRESH;
-  return { Authorization: `Bearer ${token}` };
+function authHeaders(): HeadersInit {
+  return { Authorization: `Bearer ${API_TOKEN}` };
 }
 
 async function apiGet(path: string) {
-  const res = await fetch(`${API_BASE}${path}`, { headers: authHeaders("GET") });
+  const res = await fetch(`${API_BASE}${path}`, { headers: authHeaders() });
   if (!res.ok) throw await res.json();
   return res.json();
 }
@@ -124,7 +128,7 @@ async function apiGet(path: string) {
 async function apiPost(path: string) {
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
-    headers: authHeaders("POST"),
+    headers: authHeaders(),
   });
   if (!res.ok) throw await res.json();
   return res.json();
@@ -137,8 +141,8 @@ async function apiPost(path: string) {
 src/
   config/
     env.ts                  # Square + server
-    auth.ts                 # API_GENERAL_TOKEN + API_REFRESH_TOKEN
-  lib/auth/tokens.ts        # method → token policy
+    auth.ts                 # API_GENERAL_TOKEN (+ optional API_REFRESH_TOKEN)
+  lib/auth/tokens.ts        # method → token policy (refresh when configured)
   plugins/auth.ts
   routes/
     health.ts               # public
@@ -150,7 +154,7 @@ src/
 
 **Decisions**
 
-- **Method-based tokens** — Read-only client flows use the general token; cache bust and future writes use the refresh token.
+- **Optional refresh token** — Set `API_REFRESH_TOKEN` later to require a separate credential on POST/PUT/PATCH/DELETE without changing route code.
 - **Backend proxy only** — Square token stays server-side; CORS is restricted to configured origins.
 - **Catalog cache** — In-memory 5-minute TTL to avoid duplicate paginated `list` calls per session.
 - **Location filter** — Uses Square’s `presentAtAllLocations` / `presentAtLocationIds` / `absentAtLocationIds` on both items and categories.

@@ -1,14 +1,7 @@
-import { fetchCatalogSnapshot } from "../lib/catalog/fetch-catalog.js";
-import { buildAvailabilityContextForMenu } from "../lib/catalog/availability.js";
 import type { AvailabilityContext } from "../lib/catalog/availability.js";
-import {
-  buildImageUrlMap,
-  mapCategories,
-  mapItems,
-} from "../lib/catalog/map-catalog.js";
 import { notFound } from "../lib/errors.js";
 import type { CategoryDto, MenuItemDto } from "../types/api.js";
-import { listLocations } from "./locations.service.js";
+import { loadCatalogView, type CatalogViewQuery } from "./catalog-context.service.js";
 
 export type MenuQuery = {
   locationId: string;
@@ -27,22 +20,18 @@ export type VisibleMenuContext = {
 export async function loadVisibleMenu(
   query: MenuQuery,
 ): Promise<VisibleMenuContext> {
-  const { locationId, at } = query;
-  const locations = await listLocations();
-  const location = locations.find((loc) => loc.id === locationId);
+  const view = await loadCatalogView(query as CatalogViewQuery);
 
-  if (!location) {
-    throw notFound(`Location not found: ${locationId}`);
+  if (!view.locationId) {
+    throw notFound(`Location not found: ${query.locationId}`);
   }
 
-  const availability = buildAvailabilityContextForMenu(at, location.timezone);
-  const { objects } = await fetchCatalogSnapshot();
-  const imageUrlMap = buildImageUrlMap(objects);
-
-  const categories = mapCategories(objects, locationId);
-  const items = mapItems(objects, imageUrlMap, { locationId, availability });
-
-  return { locationId, availability, categories, items };
+  return {
+    locationId: view.locationId,
+    availability: view.availability,
+    categories: view.categories,
+    items: view.items,
+  };
 }
 
 export function toMenuAvailabilityDto(
