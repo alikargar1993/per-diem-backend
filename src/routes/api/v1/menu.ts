@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { getItemDetail, getMenuForLocation } from "../../services/menu.service.js";
+import { getItemDetail, getMenuForLocation } from "../../../services/menu.service.js";
 
 const menuQuerySchema = z.object({
   locationId: z.string().min(1, "locationId is required"),

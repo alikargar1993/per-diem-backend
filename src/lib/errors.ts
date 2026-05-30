@@ -56,3 +56,14 @@ export function upstreamError(
 export function rateLimited(message = "Upstream rate limit exceeded"): AppError {
   return new AppError(message, { statusCode: 429, code: "RATE_LIMITED" });
 }
+
+export function unauthorized(
+  message = "Unauthorized",
+  details?: unknown,
+): AppError {
+  return new AppError(message, {
+    statusCode: 401,
+    code: "UNAUTHORIZED",
+    details,
+  });
+}

@@ -34,6 +34,8 @@ Thin Node backend for the [Per Diem full-stack take-home](perdiem-fullstack-codi
    | --------------------- | -------------------------------------------------------- |
    | `SQUARE_ACCESS_TOKEN` | Sandbox access token from the Square Developer Dashboard |
    | `SQUARE_ENVIRONMENT`  | `sandbox` (required for this challenge)                  |
+   | `API_GENERAL_TOKEN`   | Required for **GET/HEAD** `/api/*` (min 16 chars)        |
+   | `API_REFRESH_TOKEN`   | Required for **POST/PUT/PATCH/DELETE** `/api/*`          |
    | `PORT`                | API port (default `3001`)                                |
    | `CORS_ORIGINS`        | Comma-separated client origins allowed to call the API   |
 
@@ -48,11 +50,17 @@ Thin Node backend for the [Per Diem full-stack take-home](perdiem-fullstack-codi
 5. Verify:
 
    ```bash
+   export API_TOKEN="your-general-token"
+
    curl http://localhost:3001/health
-   curl http://localhost:3001/api/locations
-   curl "http://localhost:3001/api/menu?locationId=YOUR_LOCATION_ID"
-   curl "http://localhost:3001/api/menu?locationId=YOUR_LOCATION_ID&at=2026-05-30T08:30:00.000Z"
-   curl "http://localhost:3001/api/search?locationId=YOUR_LOCATION_ID&q=coffee"
+   curl -H "Authorization: Bearer $API_TOKEN" http://localhost:3001/api/locations
+   curl -H "Authorization: Bearer $API_TOKEN" \
+     "http://localhost:3001/api/menu?locationId=YOUR_LOCATION_ID"
+   curl -H "Authorization: Bearer $API_TOKEN" \
+     "http://localhost:3001/api/search?locationId=YOUR_LOCATION_ID&q=coffee"
+
+   curl -X POST -H "Authorization: Bearer $API_REFRESH_TOKEN" \
+     http://localhost:3001/api/catalog/refresh
    ```
 
    Replace `YOUR_LOCATION_ID` with an id from the locations response. Pass `at` (ISO 8601) to simulate the client device clock for meal-period filtering.
@@ -76,32 +84,73 @@ Thin Node backend for the [Per Diem full-stack take-home](perdiem-fullstack-codi
 | `GET` | `/api/menu?locationId=&at=` | Menu for one location; optional `at` (ISO 8601 client time) |
 | `GET` | `/api/items/:itemId?locationId=&at=` | Item detail; location + meal-period checks |
 | `GET` | `/api/search?locationId=&q=&at=` | Search visible menu (name, description, variations, categories) |
-| `POST` | `/api/catalog/refresh` | Clears catalog cache and returns fresh catalog |
+| `POST` | `/api/catalog/refresh` | Clears catalog cache (**refresh token**) |
 
 Prices are returned in the smallest currency unit (cents) with a `currency` code, matching Square’s `Money` type.
+
+## Authentication
+
+Tokens are sent in headers only (never query strings):
+
+- `Authorization: Bearer <token>`
+- `X-Api-Token: <token>`
+
+| HTTP method | Env variable | Used for |
+|-------------|--------------|----------|
+| `GET`, `HEAD` | `API_GENERAL_TOKEN` | Read data (locations, menu, search, catalog) |
+| `POST`, `PUT`, `PATCH`, `DELETE`, … | `API_REFRESH_TOKEN` | Mutations (e.g. `POST /api/catalog/refresh`) |
+| — | *(none)* | `GET /health` only |
+
+Wrong or missing token → **401** with `code: "UNAUTHORIZED"`.
+
+### Frontend example
+
+```ts
+const API_BASE = "http://localhost:3001";
+const GENERAL = import.meta.env.VITE_API_GENERAL_TOKEN;
+const REFRESH = import.meta.env.VITE_API_REFRESH_TOKEN;
+
+function authHeaders(method: string): HeadersInit {
+  const token = method === "GET" || method === "HEAD" ? GENERAL : REFRESH;
+  return { Authorization: `Bearer ${token}` };
+}
+
+async function apiGet(path: string) {
+  const res = await fetch(`${API_BASE}${path}`, { headers: authHeaders("GET") });
+  if (!res.ok) throw await res.json();
+  return res.json();
+}
+
+async function apiPost(path: string) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: authHeaders("POST"),
+  });
+  if (!res.ok) throw await res.json();
+  return res.json();
+}
+```
 
 ## Architecture
 
 ```
 src/
-  config/env.ts
-  types/api.ts              # Client-facing DTOs
-  lib/
-    catalog/
-      fetch-catalog.ts      # Paginated Square list + 5m cache
-      location-presence.ts  # present_at_* / absent_at_* rules
-      map-catalog.ts        # Square → API shapes
-    errors.ts
-    square/
-  services/                 # Business logic
-  routes/api/               # HTTP handlers
-  plugins/error-handler.ts
-  app.ts
-  index.ts
+  config/
+    env.ts                  # Square + server
+    auth.ts                 # API_GENERAL_TOKEN + API_REFRESH_TOKEN
+  lib/auth/tokens.ts        # method → token policy
+  plugins/auth.ts
+  routes/
+    health.ts               # public
+    api/v1/                 # method-based auth on all routes
+  lib/auth/tokens.ts
+  services/
+  ...
 ```
 
 **Decisions**
 
+- **Method-based tokens** — Read-only client flows use the general token; cache bust and future writes use the refresh token.
 - **Backend proxy only** — Square token stays server-side; CORS is restricted to configured origins.
 - **Catalog cache** — In-memory 5-minute TTL to avoid duplicate paginated `list` calls per session.
 - **Location filter** — Uses Square’s `presentAtAllLocations` / `presentAtLocationIds` / `absentAtLocationIds` on both items and categories.
@@ -113,7 +162,6 @@ src/
 - Day-of-week rules (if added in Square outside this custom attribute)
 - Modifiers on item detail
 - Cart subtotal, inventory
-- Search, cart subtotal, inventory
 
 ## Submission notes
 

@@ -16,6 +16,9 @@ export async function buildApp() {
     // Explicit origins only — avoids reflecting arbitrary Origin headers (SSRF-adjacent foot-gun for credentialed setups).
     origin: env.CORS_ORIGINS,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Api-Token"],
+    // Browser clients must be allowed to send the API token header on cross-origin requests.
+    credentials: true,
   });
 
   await registerErrorHandler(app);

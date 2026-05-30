@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { searchMenu } from "../../services/search.service.js";
+import { searchMenu } from "../../../services/search.service.js";
 
 const searchQuerySchema = z.object({
   locationId: z.string().min(1, "locationId is required"),
