@@ -12,6 +12,6 @@ export async function getCatalog(): Promise<CatalogResponseDto> {
 
   return {
     categories: mapCategories(objects),
-    items: mapItems(objects, imageUrlMap),
+    items: mapItems(objects, imageUrlMap, {}),
   };
 }

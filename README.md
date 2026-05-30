@@ -51,9 +51,10 @@ Thin Node backend for the [Per Diem full-stack take-home](perdiem-fullstack-codi
    curl http://localhost:3001/health
    curl http://localhost:3001/api/locations
    curl "http://localhost:3001/api/menu?locationId=YOUR_LOCATION_ID"
+   curl "http://localhost:3001/api/menu?locationId=YOUR_LOCATION_ID&at=2026-05-30T08:30:00.000Z"
    ```
 
-   Replace `YOUR_LOCATION_ID` with an id from the locations response.
+   Replace `YOUR_LOCATION_ID` with an id from the locations response. Pass `at` (ISO 8601) to simulate the client device clock for meal-period filtering.
 
 ## Scripts
 
@@ -71,8 +72,8 @@ Thin Node backend for the [Per Diem full-stack take-home](perdiem-fullstack-codi
 | `GET` | `/health` | Liveness check |
 | `GET` | `/api/locations` | All Square locations |
 | `GET` | `/api/catalog` | Categories + items (all locations) |
-| `GET` | `/api/menu?locationId=` | Menu grouped by category for one location |
-| `GET` | `/api/items/:itemId?locationId=` | Item detail (validates location availability) |
+| `GET` | `/api/menu?locationId=&at=` | Menu for one location; optional `at` (ISO 8601 client time) |
+| `GET` | `/api/items/:itemId?locationId=&at=` | Item detail; location + meal-period checks |
 | `POST` | `/api/catalog/refresh` | Clears catalog cache and returns fresh catalog |
 
 Prices are returned in the smallest currency unit (cents) with a `currency` code, matching Square’s `Money` type.
@@ -103,10 +104,11 @@ src/
 - **Catalog cache** — In-memory 5-minute TTL to avoid duplicate paginated `list` calls per session.
 - **Location filter** — Uses Square’s `presentAtAllLocations` / `presentAtLocationIds` / `absentAtLocationIds` on both items and categories.
 - **Menu grouping** — Items can appear under multiple categories when Square assigns multiple category ids.
+- **Meal-period filter** — Item variations tagged with Square custom attribute `Availability` (SELECTION) are shown only when the active period’s selection UID matches. If the client passes `at` (ISO 8601), breakfast / lunch / dinner are resolved in the **location timezone**; if `at` is omitted, the **server machine’s local time of day** is used instead. Windows: 05:00–11:00, 11:00–15:00, 15:00–22:00. UIDs are configurable via `AVAILABILITY_*_UID` in `.env`. Variations without the attribute are always shown.
 
 ## What’s next
 
-- Time-of-day & day-of-week availability (category availability periods)
+- Day-of-week rules (if added in Square outside this custom attribute)
 - Modifiers on item detail
 - Search, cart subtotal, inventory
 

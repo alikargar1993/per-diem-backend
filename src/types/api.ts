@@ -42,8 +42,18 @@ export type MenuCategoryGroupDto = {
   items: MenuItemDto[];
 };
 
+export type MenuAvailabilityDto = {
+  /** ISO 8601 instant used for filtering (from client `at` or server now). */
+  referenceTime: string;
+  /** IANA timezone used to resolve meal periods (location timezone). */
+  timezone: string;
+  /** Active meal periods at referenceTime in timezone (empty = late-night gap). */
+  activePeriods: ("breakfast" | "lunch" | "dinner")[];
+};
+
 export type MenuResponseDto = {
   locationId: string;
+  availability: MenuAvailabilityDto;
   categories: MenuCategoryGroupDto[];
   /** Items with no resolvable category, if any. */
   uncategorized: MenuItemDto[];

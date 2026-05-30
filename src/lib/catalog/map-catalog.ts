@@ -5,7 +5,17 @@ import type {
   MenuItemDto,
   MoneyDto,
 } from "../../types/api.js";
+import {
+  isItemAvailableNow,
+  isVariationAvailableNow,
+  type AvailabilityContext,
+} from "./availability.js";
 import { isPresentAtLocation, type LocationPresenceFields } from "./location-presence.js";
+
+export type MapCatalogOptions = {
+  locationId?: string;
+  availability?: AvailabilityContext;
+};
 
 function toMoney(money: Square.Money | null | undefined): MoneyDto | null {
   if (money?.amount == null || money.amount === undefined || money.currency == null) {
@@ -84,7 +94,10 @@ function resolveCategoryIds(item: Square.CatalogObject.Item): string[] {
   return legacyId ? [legacyId] : [];
 }
 
-function mapVariations(item: Square.CatalogObject.Item): ItemVariationDto[] {
+function mapVariations(
+  item: Square.CatalogObject.Item,
+  availability?: AvailabilityContext,
+): ItemVariationDto[] {
   const variations = item.itemData?.variations ?? [];
 
   return variations
@@ -93,6 +106,10 @@ function mapVariations(item: Square.CatalogObject.Item): ItemVariationDto[] {
         v.type === "ITEM_VARIATION",
     )
     .filter((v: Square.CatalogObject.ItemVariation) => !v.isDeleted)
+    .filter(
+      (v) =>
+        !availability || isVariationAvailableNow(v, availability),
+    )
     .map((v: Square.CatalogObject.ItemVariation) => ({
       id: v.id,
       name: v.itemVariationData?.name ?? null,
@@ -105,6 +122,7 @@ function mapVariations(item: Square.CatalogObject.Item): ItemVariationDto[] {
 export function mapItem(
   item: Square.CatalogObject.Item,
   imageUrlMap: Map<string, string>,
+  availability?: AvailabilityContext,
 ): MenuItemDto | null {
   if (item.isDeleted || item.itemData?.isArchived) {
     return null;
@@ -113,7 +131,11 @@ export function mapItem(
   const name = item.itemData?.name;
   if (!name) return null;
 
-  const variations = mapVariations(item);
+  const variations = mapVariations(item, availability);
+  if (variations.length === 0) {
+    return null;
+  }
+
   const price = variations.find((v) => v.price != null)?.price ?? null;
 
   const imageId = item.imageId ?? item.itemData?.imageIds?.[0];
@@ -138,17 +160,21 @@ export function mapItem(
 export function mapItems(
   objects: Square.CatalogObject[],
   imageUrlMap: Map<string, string>,
-  locationId?: string,
+  options: MapCatalogOptions = {},
 ): MenuItemDto[] {
   const items: MenuItemDto[] = [];
+  const { locationId, availability } = options;
 
   for (const object of objects) {
     if (object.type !== "ITEM") continue;
     if (locationId && !isPresentAtLocation(presenceFields(object), locationId)) {
       continue;
     }
+    if (availability && !isItemAvailableNow(object, availability)) {
+      continue;
+    }
 
-    const mapped = mapItem(object, imageUrlMap);
+    const mapped = mapItem(object, imageUrlMap, availability);
     if (mapped) items.push(mapped);
   }
 
