@@ -49,6 +49,8 @@ export type MenuAvailabilityDto = {
   timezone: string;
   /** Active meal periods at referenceTime in timezone (empty = late-night gap). */
   activePeriods: ("breakfast" | "lunch" | "dinner")[];
+  /** Local day-of-week at referenceTime in timezone. */
+  activeDay: "sun" | "mon" | "tue" | "wed" | "thu" | "fri" | "sat";
 };
 
 export type MenuResponseDto = {

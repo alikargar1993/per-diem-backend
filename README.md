@@ -36,6 +36,7 @@ Thin Node backend for the [Per Diem full-stack take-home](perdiem-fullstack-codi
    | `SQUARE_ENVIRONMENT`  | `sandbox` (required for this challenge)                  |
    | `API_GENERAL_TOKEN`   | Required on all `/api` routes (min 16 chars)               |
    | `API_REFRESH_TOKEN`   | Optional; when set, mutating methods require it instead  |
+   | `AVAILABILITY_*_UID`  | Square selection UIDs for meal periods and day-of-week   |
    | `PORT`                | API port (default `3001`)                                |
    | `CORS_ORIGINS`        | Comma-separated client origins allowed to call the API   |
 
@@ -160,12 +161,12 @@ src/
 - **Location filter** — Uses Square’s `presentAtAllLocations` / `presentAtLocationIds` / `absentAtLocationIds` on both items and categories.
 - **Menu grouping** — Items can appear under multiple categories when Square assigns multiple category ids.
 - **Meal-period filter** — Item variations tagged with Square custom attribute `Availability` (SELECTION) are shown only when the active period’s selection UID matches. If the client passes `at` (ISO 8601), breakfast / lunch / dinner are resolved in the **location timezone**; if `at` is omitted, the **server machine’s local time of day** is used instead. Windows: 05:00–11:00, 11:00–15:00, 15:00–22:00. UIDs are configurable via `AVAILABILITY_*_UID` in `.env`. Variations without the attribute are always shown.
+- **Day-of-week filter** — Variations tagged with Square custom attribute `AvailableDays` (SELECTION) can be limited to **weekday** and/or **weekend** selections. Configure UIDs via `AVAILABILITY_WEEKDAY_UID` and `AVAILABILITY_WEEKEND_UID`. Variations without this attribute are available every day. Both meal-period and day rules must pass for a variation to appear.
 
 ## What’s next
 
-- Day-of-week rules (if added in Square outside this custom attribute)
 - Modifiers on item detail
-- Cart subtotal, inventory
+- Inventory / out-of-stock
 
 ## Submission notes
 

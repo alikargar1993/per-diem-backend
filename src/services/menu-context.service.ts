@@ -40,10 +40,12 @@ export function toMenuAvailabilityDto(
   referenceTime: string;
   timezone: string;
   activePeriods: AvailabilityContext["activePeriods"];
+  activeDay: AvailabilityContext["activeDay"];
 } {
   return {
     referenceTime: availability.referenceTime.toISOString(),
     timezone: availability.timezone,
     activePeriods: availability.activePeriods,
+    activeDay: availability.activeDay,
   };
 }

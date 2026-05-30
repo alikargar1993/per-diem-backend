@@ -1,17 +1,26 @@
 import type { Square } from "square";
 import {
   availabilityAttributeName,
+  dayAvailabilityAttributeName,
+  isWeekday,
+  isWeekend,
   mealPeriodSelectionUids,
   mealPeriodWindows,
+  weekdaySelectionUid,
+  weekendSelectionUid,
+  type DayOfWeek,
   type MealPeriod,
 } from "../../config/availability.js";
 
 export type AvailabilityContext = {
   referenceTime: Date;
-  /** IANA timezone used to resolve local time-of-day for meal windows. */
+  /** IANA timezone used to resolve local time-of-day and day-of-week. */
   timezone: string;
   activePeriods: MealPeriod[];
   activeSelectionUids: string[];
+  activeDay: DayOfWeek;
+  /** Square "AvailableDays" selection UIDs that match the current local day. */
+  activeDaySelectionUids: string[];
 };
 
 /** Server machine local timezone (Node / OS). */
@@ -46,6 +55,32 @@ export function getLocalMinutes(instant: Date, timezone: string): number {
   return hour * 60 + minute;
 }
 
+const DAY_INDEX_TO_KEY: DayOfWeek[] = [
+  "sun",
+  "mon",
+  "tue",
+  "wed",
+  "thu",
+  "fri",
+  "sat",
+];
+
+/** Local day-of-week for `instant` in `timezone`. */
+export function getLocalDayOfWeek(instant: Date, timezone: string): DayOfWeek {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    weekday: "short",
+  });
+
+  const weekday = formatter.format(instant).toLowerCase().slice(0, 3);
+  const match = DAY_INDEX_TO_KEY.find((day) => day === weekday);
+
+  if (match) return match;
+
+  const utcDay = instant.getUTCDay();
+  return DAY_INDEX_TO_KEY[utcDay] ?? "sun";
+}
+
 export function getActiveMealPeriods(localMinutes: number): MealPeriod[] {
   const active: MealPeriod[] = [];
 
@@ -59,22 +94,41 @@ export function getActiveMealPeriods(localMinutes: number): MealPeriod[] {
   return active;
 }
 
+/** Selection UIDs on "AvailableDays" that match the given local day. */
+export function getActiveDaySelectionUids(localDay: DayOfWeek): string[] {
+  const uids: string[] = [];
+
+  if (isWeekday(localDay) && weekdaySelectionUid) {
+    uids.push(weekdaySelectionUid);
+  }
+
+  if (isWeekend(localDay) && weekendSelectionUid) {
+    uids.push(weekendSelectionUid);
+  }
+
+  return uids;
+}
+
 export function buildAvailabilityContext(
   referenceTime: Date,
   timezone: string,
 ): AvailabilityContext {
   const resolvedTimezone = resolveTimezone(timezone);
   const localMinutes = getLocalMinutes(referenceTime, resolvedTimezone);
+  const activeDay = getLocalDayOfWeek(referenceTime, resolvedTimezone);
   const activePeriods = getActiveMealPeriods(localMinutes);
   const activeSelectionUids = activePeriods.map(
     (period) => mealPeriodSelectionUids[period],
   );
+  const activeDaySelectionUids = getActiveDaySelectionUids(activeDay);
 
   return {
     referenceTime,
     timezone: resolvedTimezone,
     activePeriods,
     activeSelectionUids,
+    activeDay,
+    activeDaySelectionUids,
   };
 }
 
@@ -110,8 +164,29 @@ export function getVariationAvailabilityUids(
   return null;
 }
 
-/** Variation is orderable now if it has no Availability tag or overlaps an active period. */
-export function isVariationAvailableNow(
+/**
+ * Reads Square's "AvailableDays" SELECTION attribute on a variation.
+ * Returns null when the variation has no day-of-week restriction.
+ */
+export function getVariationDayUids(
+  variation: Square.CatalogObject.ItemVariation,
+): string[] | null {
+  const values = variation.customAttributeValues;
+  if (!values) return null;
+
+  for (const attribute of Object.values(values)) {
+    if (
+      attribute.name === dayAvailabilityAttributeName &&
+      attribute.type === "SELECTION"
+    ) {
+      return attribute.selectionUidValues ?? [];
+    }
+  }
+
+  return null;
+}
+
+export function isVariationAvailableForMeal(
   variation: Square.CatalogObject.ItemVariation,
   context: AvailabilityContext,
 ): boolean {
@@ -126,6 +201,36 @@ export function isVariationAvailableNow(
   }
 
   return allowedUids.some((uid) => context.activeSelectionUids.includes(uid));
+}
+
+export function isVariationAvailableOnDay(
+  variation: Square.CatalogObject.ItemVariation,
+  context: AvailabilityContext,
+): boolean {
+  const allowedUids = getVariationDayUids(variation);
+
+  if (allowedUids == null || allowedUids.length === 0) {
+    return true;
+  }
+
+  if (context.activeDaySelectionUids.length === 0) {
+    return false;
+  }
+
+  return allowedUids.some((uid) =>
+    context.activeDaySelectionUids.includes(uid),
+  );
+}
+
+/** Variation is orderable now when meal-period and day-of-week rules both pass. */
+export function isVariationAvailableNow(
+  variation: Square.CatalogObject.ItemVariation,
+  context: AvailabilityContext,
+): boolean {
+  return (
+    isVariationAvailableForMeal(variation, context) &&
+    isVariationAvailableOnDay(variation, context)
+  );
 }
 
 export function isItemAvailableNow(
