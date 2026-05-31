@@ -1,0 +1,29 @@
+import cors from "@fastify/cors";
+import Fastify from "fastify";
+import { env } from "./config/env.js";
+import { registerErrorHandler } from "./plugins/error-handler.js";
+import { apiRoutes } from "./routes/api/index.js";
+import { healthRoutes } from "./routes/health.js";
+
+export async function buildApp() {
+  const app = Fastify({
+    logger: {
+      level: process.env.NODE_ENV === "production" ? "info" : "debug",
+    },
+  });
+
+  await app.register(cors, {
+    // Explicit origins only — avoids reflecting arbitrary Origin headers (SSRF-adjacent foot-gun for credentialed setups).
+    origin: env.CORS_ORIGINS,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Api-Token"],
+    // Browser clients must be allowed to send the API token header on cross-origin requests.
+    credentials: true,
+  });
+
+  await registerErrorHandler(app);
+  await app.register(healthRoutes);
+  await app.register(apiRoutes, { prefix: "/api" });
+
+  return app;
+}
