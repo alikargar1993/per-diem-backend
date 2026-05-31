@@ -35,7 +35,7 @@ Thin Node backend for the [Per Diem full-stack take-home](perdiem-fullstack-codi
    | `SQUARE_ACCESS_TOKEN` | Sandbox access token from the Square Developer Dashboard |
    | `SQUARE_ENVIRONMENT`  | `sandbox` (required for this challenge)                  |
    | `API_GENERAL_TOKEN`   | Required on all `/api` routes (min 16 chars)             |
-   | `AVAILABILITY_*_UID`  | Square selection UIDs for meal periods and day-of-week   |
+   | `AVAILABILITY_*_UID`  | Custom-attribute selection UIDs (see **Decisions** — sandbox has no Menu API) |
    | `PORT`                | API port (default `3001`)                                |
    | `CORS_ORIGINS`        | Comma-separated client origins allowed to call the API   |
 
@@ -187,8 +187,17 @@ src/
 - **Catalog cache** — In-memory 5-minute TTL to avoid duplicate paginated `list` calls per session.
 - **Location filter** — Uses Square’s `presentAtAllLocations` / `presentAtLocationIds` / `absentAtLocationIds` on both items and categories.
 - **Menu grouping** — Items can appear under multiple categories when Square assigns multiple category ids.
-- **Meal-period filter** — Item variations tagged with Square custom attribute `Availability` (SELECTION) are shown only when the active period’s selection UID matches. If the client passes `at` (ISO 8601), breakfast / lunch / dinner are resolved in the **location timezone**; if `at` is omitted, the **server machine’s local time of day** is used instead. Windows: 05:00–11:00, 11:00–15:00, 15:00–22:00. UIDs are configurable via `AVAILABILITY_*_UID` in `.env`. Variations without the attribute are always shown.
-- **Day-of-week filter** — Variations tagged with Square custom attribute `AvailableDays` (SELECTION) can be limited to **weekday** and/or **weekend** selections. Configure UIDs via `AVAILABILITY_WEEKDAY_UID` and `AVAILABILITY_WEEKEND_UID`. Variations without this attribute are available every day. Both meal-period and day rules must pass for a variation to appear.
+- **Availability via custom attributes** — Square sandbox does not expose scheduled **Menu** / category availability, so time- and day-based rules use **catalog custom attributes** on item variations instead of native Square menu schedules:
+  - **`Availability`** (SELECTION) — meal periods; mapped via `AVAILABILITY_BREAKFAST_UID`, `AVAILABILITY_LUNCH_UID`, and `AVAILABILITY_DINNER_UID` (windows: 05:00–11:00, 11:00–15:00, 15:00–22:00 in location timezone).
+  - **`AvailableDays`** (SELECTION) — weekday / weekend; mapped via `AVAILABILITY_WEEKDAY_UID` and `AVAILABILITY_WEEKEND_UID`.
+  - The client passes `at` (ISO 8601) so periods resolve in the **location timezone**; if omitted, the server machine’s local time is used. Variations without an attribute skip that check. Both meal-period and day rules must pass for a variation to appear.
+
+**Trade-offs**
+
+- **In-memory catalog cache vs Redis** — A 5-minute in-process TTL is enough for a single dev server and keeps the stack simple. Trade-off: cache is not shared across instances and is lost on restart; Redis (see TODO) would cut duplicate Square calls in production.
+- **Hide unavailable items vs show disabled** — Out-of-window variations are **removed from the menu response** rather than returned with an “unavailable” flag. Trade-off: simpler list UI and less client logic, but guests cannot browse the full catalog or see when an item returns.
+- **Shared API token vs user sessions** — One `API_GENERAL_TOKEN` protects all routes. Trade-off: fast to ship for a take-home, but no per-user identity for synced carts or scoped access until proper auth is added.
+- **Client-supplied `at` vs server clock only** — The app sends device time for availability filtering. Trade-off: better alignment with “what the guest sees now” in the location timezone, but a wrong device clock can skew results; server-only time would be simpler yet less representative of guest context.
 
 ## TODO
 
@@ -198,7 +207,3 @@ Features and infrastructure worth adding with more time:
 - **Redis-backed caching** — Move catalog and menu responses from in-memory TTL to Redis with cache keys per `locationId` + `at` window. Shared cache across server instances reduces repeated Square Catalog API calls when many clients load the same menu, keeping Square rate limits and latency under control.
 - **Modifiers on item detail** — Expose Square modifier lists on `/api/items/:id` and let the client build configurable orders.
 - **Inventory / out-of-stock** — Integrate Square’s Inventory API so unavailable variations are hidden or marked on the menu.
-
-## Submission notes
-
-Use **Square sandbox only**. Do not point at production merchant data.
